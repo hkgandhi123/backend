@@ -1,18 +1,16 @@
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import jwt from "jsonwebtoken";
+
+export const authMiddleware = (req, res, next) => {
+  const token = req.cookies.token;
+  if (!token) return res.status(401).json({ error: "No token, unauthorized" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+};
 
 
-export async function requireAuth(req, res, next){
-try {
-const header = req.headers.authorization || '';
-const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-if(!token) return res.status(401).json({ message: 'No token' });
-const payload = jwt.verify(token, process.env.JWT_SECRET);
-const user = await User.findById(payload.id);
-if(!user) return res.status(401).json({ message: 'Invalid token' });
-req.user = user;
-next();
-} catch (e) {
-return res.status(401).json({ message: 'Unauthorized' });
-}
-}

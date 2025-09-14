@@ -1,25 +1,17 @@
-import multer from 'multer';
-import { v2 as cloudinary } from 'cloudinary';
-import streamifier from 'streamifier';
+// backend/middleware/uploadMiddleware.js
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import multer from "multer";
+import cloudinary from "../config/cloudinary.js";
 
-
-cloudinary.config({
-cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-api_key: process.env.CLOUDINARY_API_KEY,
-api_secret: process.env.CLOUDINARY_API_SECRET
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "profile_pics",
+    allowed_formats: ["jpg", "png", "jpeg"],
+    transformation: [{ width: 500, height: 500, crop: "limit" }],
+  },
 });
 
+const upload = multer({ storage });
 
-const storage = multer.memoryStorage();
-export const upload = multer({ storage });
-
-
-export async function uploadToCloudinary(buffer){
-return new Promise((resolve, reject) => {
-const stream = cloudinary.uploader.upload_stream({ folder: 'insta-mern' }, (err, result) => {
-if (err) return reject(err);
-resolve(result);
-});
-streamifier.createReadStream(buffer).pipe(stream);
-});
-}
+export default upload;
