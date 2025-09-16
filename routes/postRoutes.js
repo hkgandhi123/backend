@@ -1,65 +1,65 @@
 import express from "express";
 import multer from "multer";
-import { authMiddleware } from "../controllers/authController.js";
+import { authMiddleware } from "../controllers/authController.js"; 
 import Post from "../models/Post.js";
 
 const router = express.Router();
 
-// Multer setup
+// Multer setup for image uploads
 const storage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
 
-// Upload post
+// Upload a new post
 router.post("/upload", authMiddleware, upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Image file is required ❌" });
-    }
+    if (!req.file) return res.status(400).json({ success: false, message: "Image required" });
 
     const newPost = await Post.create({
       user: req.user.id,
-      imageUrl: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`,
+      imageUrl: `/uploads/${req.file.filename}`,
       caption: req.body.caption || "",
     });
 
-    res.status(201).json({
-      message: "Post uploaded ✅",
-      post: newPost,
-    });
+    res.status(201).json({ success: true, message: "Post uploaded ✅", post: newPost });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Upload error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Get my posts
+// Get posts of logged-in user
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const posts = await Post.find({ user: req.user.id })
       .sort({ createdAt: -1 })
       .populate("user", "username profilePic");
-
     res.json({ success: true, posts });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Fetch my posts error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// Get posts of any user (future use)
-router.get("/user/:id", async (req, res) => {
+// Get all posts (feed)
+router.get("/all", async (req, res) => {
   try {
-    const posts = await Post.find({ user: req.params.id })
+    const posts = await Post.find()
       .sort({ createdAt: -1 })
       .populate("user", "username profilePic");
 
     res.json({ success: true, posts });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Fetch all posts error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Test route to verify deployment
+router.get("/test", (req, res) => {
+  res.json({ success: true, message: "Posts routes are working ✅" });
 });
 
 export default router;
