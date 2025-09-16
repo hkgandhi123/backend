@@ -1,25 +1,20 @@
 import express from "express";
-import {
-  signup,
-  login,
-  getProfile,
-  logout,
-  updateProfile,
-  authMiddleware,
-} from "../controllers/authController.js";
+import multer from "multer";
+import { signup, login, getProfile,  updateProfile, authMiddleware } from "../controllers/authController.js";
 
 const router = express.Router();
 
-// ✅ Auth routes
+// File upload setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+});
+const upload = multer({ storage });
+
+// Routes
 router.post("/signup", signup);
 router.post("/login", login);
 router.get("/profile", authMiddleware, getProfile);
-router.put("/update", authMiddleware, updateProfile);
-router.post("/logout", authMiddleware, logout);
-
-// ✅ Debug route
-router.get("/test", (req, res) => {
-  res.json({ message: "Auth route working ✅" });
-});
+router.put("/update", authMiddleware, upload.single("profilePic"), updateProfile);
 
 export default router;

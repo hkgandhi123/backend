@@ -3,7 +3,9 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import path from "path";
 import authRoutes from "./routes/authRoutes.js";
+import postRoutes from "./routes/postRoutes.js";   // 🔹 postRoutes import
 
 dotenv.config();
 const app = express();
@@ -18,8 +20,12 @@ app.use(cors({
   credentials: true,
 }));
 
+// 🔹 Serve uploads folder (images)
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 // Routes
 app.use("/auth", authRoutes);
+app.use("/posts", postRoutes);   // 🔹 post routes connect
 
 // MongoDB Connection + Server Start
 const PORT = process.env.PORT || 5000;
