@@ -1,76 +1,23 @@
 import express from "express";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import Post from "../models/Post.js";
-import { authMiddleware } from "../controllers/authController.js";
+import User from "../models/User.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// __dirname fix
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Multer setup
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, "../uploads");
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
-const upload = multer({ storage });
-
-/**
- * 📌 Upload new post
- */
-router.post("/upload", authMiddleware, upload.single("image"), async (req, res) => {
+router.get("/profile", authMiddleware, async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "Image is required ❌" });
-    }
-
-    const newPost = new Post({
-      user: req.user.id,
-      image: `/uploads/${req.file.filename}`,
-      caption: req.body.caption || "",
-    });
-
-    await newPost.save();
-    res.json({ success: true, message: "Post uploaded ✅", post: newPost });
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) return res.status(404).json({ success: false, message: "User not found ❌" });
+    res.json({ success: true, user });
   } catch (err) {
-    console.error("❌ Upload error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-/**
- * 📌 Get all posts (feed)
- */
-router.get("/", authMiddleware, async (req, res) => {
-  try {
-    const posts = await Post.find()
-      .populate("user", "username profilePic")
-      .sort({ createdAt: -1 });
-
-    res.json({ success: true, posts });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/**
- * 📌 Get logged-in user's posts
- */
-router.get("/my-posts", authMiddleware, async (req, res) => {
-  try {
-    const posts = await Post.find({ user: req.user.id }).sort({ createdAt: -1 });
-    res.json({ success: true, posts });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+// ✅ Temporary test route
+router.get("/test", (req, res) => {
+  res.json({ success: true, message: "Auth route is working! 🚀" });
 });
 
 export default router;
