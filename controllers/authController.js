@@ -8,9 +8,11 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 🔹 Token helper
+// 🔹 Generate JWT and set cookie
 export const generateToken = (res, userId) => {
-  const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
   res.cookie("token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -20,18 +22,31 @@ export const generateToken = (res, userId) => {
   return token;
 };
 
-// 🔹 Auth middleware
-export const authMiddleware = (req, res, next) => {
-  const token = req.cookies.token || req.headers["authorization"]?.split(" ")[1];
-  if (!token) return res.status(401).json({ message: "No token ❌" });
+// 🔹 Auth middleware to protect routes
+export const protect = async (req, res, next) => {
+  let token;
+
+  if (req.cookies.token) {
+    token = req.cookies.token;
+  } else if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "No token, authorization denied ❌" });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = await User.findById(decoded.id).select("-password");
+    if (!req.user) return res.status(404).json({ message: "User not found ❌" });
     next();
   } catch (err) {
     console.error("❌ JWT verify error:", err);
-    res.status(401).json({ message: "Invalid token ❌" });
+    res.status(401).json({ message: "Token is not valid ❌" });
   }
 };
 
@@ -40,7 +55,7 @@ export const signup = async (req, res) => {
   try {
     const { username, email, password } = req.body;
     if (!username || !email || !password)
-      return res.status(400).json({ message: "All fields required ❌" });
+      return res.status(400).json({ message: "All fields are required ❌" });
 
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(400).json({ message: "User already exists ❌" });
@@ -82,10 +97,8 @@ export const login = async (req, res) => {
 // 🔹 Get Profile
 export const getProfile = async (req, res) => {
   try {
-    if (!req.user?.id) return res.status(401).json({ message: "Unauthorized ❌" });
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found ❌" });
-    res.json({ success: true, user });
+    if (!req.user) return res.status(401).json({ message: "Unauthorized ❌" });
+    res.json({ success: true, user: req.user });
   } catch (err) {
     console.error("❌ Get profile error:", err);
     res.status(500).json({ message: err.message });
@@ -95,8 +108,7 @@ export const getProfile = async (req, res) => {
 // 🔹 Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    if (!req.user?.id)
-      return res.status(401).json({ success: false, message: "Unauthorized ❌" });
+    if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized ❌" });
 
     const { username, email, bio } = req.body;
     const updates = {};
@@ -104,32 +116,21 @@ export const updateProfile = async (req, res) => {
     if (email) updates.email = email;
     if (bio) updates.bio = bio;
 
-    const user = await User.findById(req.user.id);
-
-    if (!user) return res.status(404).json({ success: false, message: "User not found ❌" });
-
-    // Agar profile pic upload hui hai
+    // Handle profile picture if uploaded
     if (req.file) {
-      try {
-        const uploadDir = path.join(__dirname, "../uploads");
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      const uploadDir = path.join(__dirname, "../uploads");
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-        // Purani profile pic delete (agar exist kare)
-        if (user.profilePic) {
-          const oldPath = path.join(__dirname, "..", user.profilePic);
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-        }
-
-        updates.profilePic = `/uploads/${req.file.filename}`;
-      } catch (fileErr) {
-        console.error("❌ File handling error:", fileErr);
-        return res.status(500).json({ success: false, message: "File upload failed ❌" });
+      // Delete old profile pic
+      if (req.user.profilePic) {
+        const oldPath = path.join(__dirname, "..", req.user.profilePic);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
+
+      updates.profilePic = `/uploads/${req.file.filename}`;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(req.user.id, updates, {
-      new: true,
-    }).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, { new: true }).select("-password");
 
     res.json({ success: true, message: "Profile updated ✅", user: updatedUser });
   } catch (err) {

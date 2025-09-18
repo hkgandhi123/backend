@@ -1,29 +1,20 @@
-import jwt from "jsonwebtoken";
+// middleware/authMiddleware.js
 import User from "../models/User.js";
+import jwt from "jsonwebtoken";
 
-// ✅ Protect route middleware
-export const protect = async (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
+  const token = req.cookies.token || req.headers["authorization"]?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token ❌" });
+
   try {
-    // Token check: cookie ya authorization header
-    let token = req.cookies.token || req.headers.authorization?.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({ success: false, message: "Not authorized, no token ❌" });
-    }
-
-    // Token verify
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // User fetch from DB
     const user = await User.findById(decoded.id).select("-password");
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found ❌" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found ❌" });
 
-    req.user = user; // ✅ ab req.user me pura user object aayega
+    req.user = user; // ✅ full user object available
     next();
   } catch (err) {
-    console.error("❌ Protect middleware error:", err);
-    res.status(401).json({ success: false, message: "Not authorized, token failed ❌" });
+    console.error("❌ JWT verify error:", err.message);
+    res.status(401).json({ message: "Invalid token ❌" });
   }
 };
