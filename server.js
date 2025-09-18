@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
+import postRoutes from "./routes/postRoutes.js";
+
 
 dotenv.config();
 const app = express();
@@ -13,11 +15,26 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+
 // 🔹 CORS setup
 app.use(cors({
-  origin: ["http://localhost:3000", "https://your-frontend.vercel.app"], // add your frontend URL
-  credentials: true
+  origin: [
+    "http://localhost:3000",     // local dev
+    "https://your-frontend.vercel.app" // deployed frontend
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,  // ✅ cookies allow
 }));
+
+// ✅ Required for preflight requests (especially cookies + Authorization headers)
+app.options("*", cors({
+  origin: [
+    "http://localhost:3000",
+    "https://your-frontend.vercel.app"
+  ],
+  credentials: true,
+}));
+
 
 // 🔹 Serve uploads
 import path from "path";
@@ -28,6 +45,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 🔹 Routes
 app.use("/auth", authRoutes);
+app.use("/posts", postRoutes);
 
 // 🔹 Test route
 app.get("/", (req, res) => res.send("Backend is running ✅"));
