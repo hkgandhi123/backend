@@ -1,6 +1,6 @@
 import express from "express";
 import { signup, login, getProfile, updateProfile } from "../controllers/authController.js";
-import { authMiddleware } from "../controllers/authController.js";
+import { protect } from "../middleware/authMiddleware.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -12,21 +12,23 @@ const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Multer setup for profile pics / posts
+// Multer setup for profile pic upload
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, "../uploads");
     if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname)
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
 
-// 🔹 Auth routes
+/* =========================
+   AUTH ROUTES
+========================= */
 router.post("/signup", signup);
 router.post("/login", login);
-router.get("/profile", authMiddleware, getProfile);
-router.put("/update-profile", authMiddleware, upload.single("profilePic"), updateProfile);
+router.get("/profile", protect, getProfile);
+router.put("/update", protect, upload.single("profilePic"), updateProfile);
 
 export default router;
