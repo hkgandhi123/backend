@@ -1,19 +1,16 @@
 import jwt from "jsonwebtoken";
 
-export const authMiddleware = (req, res, next) => {
-  // Optional chaining to prevent crash if cookies undefined
+// 🔹 Auth middleware
+export const protect = (req, res, next) => {
   const token = req.cookies?.token || req.headers["authorization"]?.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, message: "Access denied ❌" });
-  }
+  if (!token) return res.status(401).json({ message: "No token ❌" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = decoded; // decoded.id will have user ID
     next();
   } catch (err) {
-    console.error("JWT Error:", err);
-    return res.status(401).json({ success: false, message: "Invalid token ❌" });
+    console.error("❌ JWT verify error:", err);
+    res.status(401).json({ message: "Invalid token ❌" });
   }
 };
