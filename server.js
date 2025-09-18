@@ -1,39 +1,42 @@
 import express from "express";
-import mongoose from "mongoose";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
+import cookieParser from "cookie-parser";
 import cors from "cors";
-
-import authRoutes from "./routes/authRoutes.js";   // 🔹 Auth routes
-import postRoutes from "./routes/postRoutes.js";   // 🔹 Post routes
+import authRoutes from "./routes/authRoutes.js";
 
 dotenv.config();
 const app = express();
 
-// Middleware
+// 🔹 Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// 🔹 CORS setup
 app.use(cors({
-  origin: ["http://localhost:3000", "https://insta-mern.vercel.app"], // ✅ apna frontend URL
+  origin: ["http://localhost:3000", "https://your-frontend.vercel.app"], // add your frontend URL
   credentials: true
 }));
 
-// Default test route
-app.get("/", (req, res) => {
-  res.send("✅ Backend is running...");
-});
+// 🔹 Serve uploads
+import path from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// API Routes
+// 🔹 Routes
 app.use("/auth", authRoutes);
-app.use("/posts", postRoutes);
 
-// MongoDB connection
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => {
-  console.log("✅ MongoDB Connected");
-  app.listen(process.env.PORT || 5000, () => {
-    console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
-  });
-})
-.catch(err => console.error("❌ MongoDB Error:", err));
+// 🔹 Test route
+app.get("/", (req, res) => res.send("Backend is running ✅"));
+
+// 🔹 Connect MongoDB & start server
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ MongoDB connected");
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+  })
+  .catch(err => console.error("❌ MongoDB connection error:", err));

@@ -13,24 +13,26 @@ export const generateToken = (res, userId) => {
   const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
+
   res.cookie("token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production", // HTTPS only in prod
     sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
+
   return token;
 };
 
-// 🔹 Auth middleware to protect routes
+// 🔹 Protect routes
 export const protect = async (req, res, next) => {
   let token;
 
-  if (req.cookies.token) {
+  // Optional chaining to avoid crash
+  if (req.cookies?.token) {
     token = req.cookies.token;
   } else if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
+    req.headers.authorization?.startsWith("Bearer")
   ) {
     token = req.headers.authorization.split(" ")[1];
   }
@@ -46,7 +48,7 @@ export const protect = async (req, res, next) => {
     next();
   } catch (err) {
     console.error("❌ JWT verify error:", err);
-    res.status(401).json({ message: "Token is not valid ❌" });
+    return res.status(401).json({ message: "Token is not valid ❌" });
   }
 };
 
@@ -79,6 +81,7 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
+
     if (user && (await user.matchPassword(password))) {
       generateToken(res, user._id);
       return res.json({
@@ -87,6 +90,7 @@ export const login = async (req, res) => {
         user: { id: user._id, username: user.username, email: user.email },
       });
     }
+
     res.status(401).json({ message: "Invalid email or password ❌" });
   } catch (err) {
     console.error("❌ Login error:", err);
@@ -116,12 +120,12 @@ export const updateProfile = async (req, res) => {
     if (email) updates.email = email;
     if (bio) updates.bio = bio;
 
-    // Handle profile picture if uploaded
+    // Handle profile picture
     if (req.file) {
       const uploadDir = path.join(__dirname, "../uploads");
       if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-      // Delete old profile pic
+      // Delete old profile picture
       if (req.user.profilePic) {
         const oldPath = path.join(__dirname, "..", req.user.profilePic);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
@@ -130,7 +134,11 @@ export const updateProfile = async (req, res) => {
       updates.profilePic = `/uploads/${req.file.filename}`;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, { new: true }).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true }
+    ).select("-password");
 
     res.json({ success: true, message: "Profile updated ✅", user: updatedUser });
   } catch (err) {
