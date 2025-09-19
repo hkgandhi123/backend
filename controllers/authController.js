@@ -1,12 +1,5 @@
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-// ES Modules __dirname fix
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // 🔹 Generate JWT and set cookie
 export const generateToken = (res, userId) => {
@@ -16,37 +9,12 @@ export const generateToken = (res, userId) => {
 
   res.cookie("token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // HTTPS only in prod
+    secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 
   return token;
-};
-
-// 🔹 Protect routes
-export const protect = async (req, res, next) => {
-  let token;
-
-  if (req.cookies?.token) {
-    token = req.cookies.token;
-  } else if (req.headers.authorization?.startsWith("Bearer")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
-
-  if (!token) {
-    return res.status(401).json({ message: "No token, authorization denied ❌" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = await User.findById(decoded.id).select("-password");
-    if (!req.user) return res.status(404).json({ message: "User not found ❌" });
-    next();
-  } catch (err) {
-    console.error("❌ JWT verify error:", err);
-    return res.status(401).json({ message: "Token is not valid ❌" });
-  }
 };
 
 // 🔹 Signup
@@ -57,7 +25,8 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: "All fields are required ❌" });
 
     const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ message: "User already exists ❌" });
+    if (userExists)
+      return res.status(400).json({ message: "User already exists ❌" });
 
     const user = await User.create({ username, email, password });
     generateToken(res, user._id);
@@ -65,7 +34,13 @@ export const signup = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Signup successful ✅",
-      user: { id: user._id, username: user.username, email: user.email },
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        bio: user.bio || "",
+        profilePic: user.profilePic || "",
+      },
     });
   } catch (err) {
     console.error("❌ Signup error:", err);
@@ -84,7 +59,13 @@ export const login = async (req, res) => {
       return res.json({
         success: true,
         message: "Login successful ✅",
-        user: { id: user._id, username: user.username, email: user.email },
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          bio: user.bio || "",
+          profilePic: user.profilePic || "",
+        },
       });
     }
 
@@ -98,8 +79,18 @@ export const login = async (req, res) => {
 // 🔹 Get Profile
 export const getProfile = async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ message: "Unauthorized ❌" });
-    res.json({ success: true, user: req.user });
+    if (!req.user)
+      return res.status(401).json({ message: "Unauthorized ❌" });
+    res.json({
+      success: true,
+      user: {
+        id: req.user._id,
+        username: req.user.username,
+        email: req.user.email,
+        bio: req.user.bio || "",
+        profilePic: req.user.profilePic || "",
+      },
+    });
   } catch (err) {
     console.error("❌ Get profile error:", err);
     res.status(500).json({ message: err.message });
@@ -109,38 +100,43 @@ export const getProfile = async (req, res) => {
 // 🔹 Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, message: "Unauthorized ❌" });
-    }
+    if (!req.user)
+      return res
+        .status(401)
+        .json({ success: false, message: "Unauthorized ❌" });
 
-    const { username, email, bio } = req.body;
+    const { username, bio } = req.body;
     const updates = {};
+
     if (username) updates.username = username;
-    if (email) updates.email = email;
     if (bio) updates.bio = bio;
 
-    // Handle profile picture
-    if (req.file) {
-      // 🔹 Delete old profile picture safely
-      if (req.user.profilePic) {
-        const oldPath = path.join(__dirname, "..", req.user.profilePic);
-        if (fs.existsSync(oldPath)) {
-          try {
-            fs.unlinkSync(oldPath);
-          } catch (unlinkErr) {
-            console.error("⚠️ Could not delete old profile pic:", unlinkErr);
-          }
-        }
-      }
-
-      updates.profilePic = `/uploads/${req.file.filename}`;
+    if (req.file && req.file.path) {
+      updates.profilePic = req.file.path; // ✅ Cloudinary se URL
     }
 
-    const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, {
-      new: true,
-    }).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true, runValidators: true }
+    ).select("-password");
 
-    res.json({ success: true, message: "Profile updated ✅", user: updatedUser });
+    if (!updatedUser)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found ❌" });
+
+    res.json({
+      success: true,
+      message: "Profile updated ✅",
+      user: {
+        id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        bio: updatedUser.bio || "",
+        profilePic: updatedUser.profilePic || "",
+      },
+    });
   } catch (err) {
     console.error("❌ Update profile error:", err);
     res.status(500).json({ success: false, message: err.message });

@@ -22,8 +22,9 @@ app.use(cookieParser());
 
 // 🔹 CORS setup
 const allowedOrigins = [
-  "http://localhost:3000",          // local dev
-  "https://your-frontend.vercel.app" // deployed frontend
+  "http://localhost:3000",
+  "https://frontend-xntj.vercel.app",
+  "https://insta-mern.vercel.app"  // add this if actual frontend is here
 ];
 
 app.use(cors({
