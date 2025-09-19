@@ -28,12 +28,9 @@ export const generateToken = (res, userId) => {
 export const protect = async (req, res, next) => {
   let token;
 
-  // Optional chaining to avoid crash
   if (req.cookies?.token) {
     token = req.cookies.token;
-  } else if (
-    req.headers.authorization?.startsWith("Bearer")
-  ) {
+  } else if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
   }
 
@@ -112,7 +109,9 @@ export const getProfile = async (req, res) => {
 // 🔹 Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized ❌" });
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Unauthorized ❌" });
+    }
 
     const { username, email, bio } = req.body;
     const updates = {};
@@ -122,23 +121,24 @@ export const updateProfile = async (req, res) => {
 
     // Handle profile picture
     if (req.file) {
-      const uploadDir = path.join(__dirname, "../uploads");
-      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-      // Delete old profile picture
+      // 🔹 Delete old profile picture safely
       if (req.user.profilePic) {
         const oldPath = path.join(__dirname, "..", req.user.profilePic);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        if (fs.existsSync(oldPath)) {
+          try {
+            fs.unlinkSync(oldPath);
+          } catch (unlinkErr) {
+            console.error("⚠️ Could not delete old profile pic:", unlinkErr);
+          }
+        }
       }
 
       updates.profilePic = `/uploads/${req.file.filename}`;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      updates,
-      { new: true }
-    ).select("-password");
+    const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, {
+      new: true,
+    }).select("-password");
 
     res.json({ success: true, message: "Profile updated ✅", user: updatedUser });
   } catch (err) {

@@ -5,56 +5,57 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
-
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 const app = express();
+
+// 🔹 ES Modules __dirname fix
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 🔹 Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-
 // 🔹 CORS setup
+const allowedOrigins = [
+  "http://localhost:3000",          // local dev
+  "https://your-frontend.vercel.app" // deployed frontend
+];
+
 app.use(cors({
-  origin: [
-    "http://localhost:3000",     // local dev
-    "https://your-frontend.vercel.app" // deployed frontend
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true,  // ✅ cookies allow
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,  // ✅ allow cookies (important for JWT)
 }));
 
-// ✅ Required for preflight requests (especially cookies + Authorization headers)
+// ✅ Preflight request handling
 app.options("*", cors({
-  origin: [
-    "http://localhost:3000",
-    "https://your-frontend.vercel.app"
-  ],
+  origin: allowedOrigins,
   credentials: true,
 }));
 
-
-// 🔹 Serve uploads
-import path from "path";
-import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 🔹 Serve static uploads folder
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 🔹 Routes
 app.use("/auth", authRoutes);
 app.use("/posts", postRoutes);
 
-// 🔹 Test route
-app.get("/", (req, res) => res.send("Backend is running ✅"));
+// 🔹 Health check route
+app.get("/", (req, res) => res.send("✅ Backend is running"));
 
-// 🔹 Connect MongoDB & start server
-mongoose.connect(process.env.MONGO_URI)
+// 🔹 MongoDB connection & server start
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
   .then(() => {
     console.log("✅ MongoDB connected");
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
   })
   .catch(err => console.error("❌ MongoDB connection error:", err));
