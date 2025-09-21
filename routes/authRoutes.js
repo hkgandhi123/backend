@@ -5,7 +5,6 @@ import {
   getProfile,
   updateProfile,
 } from "../controllers/authController.js";
-
 import { protect } from "../middleware/authMiddleware.js"; // ✅ yaha se aayega
 import upload from "../middleware/uploadMiddleware.js";   // ✅ Cloudinary upload
 

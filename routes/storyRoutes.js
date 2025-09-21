@@ -1,26 +1,21 @@
 import express from "express";
-import Story from "../models/Story.js";
+import multer from "multer";
+import { createStory, getStories } from "../controllers/storyController.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Upload Story
-router.post("/", async (req, res) => {
-  try {
-    const story = new Story({
-      user: req.body.userId,
-      imageUrl: req.body.imageUrl
-    });
-    await story.save();
-    res.json(story);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// File storage (local fallback)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 
-// Get All Stories
-router.get("/", async (req, res) => {
-  const stories = await Story.find().populate("user", "username profilePic");
-  res.json(stories);
-});
+const upload = multer({ storage });
+
+// Routes
+router.post("/", protect, upload.single("media"), createStory);
+router.get("/", protect, getStories);
 
 export default router;
+
