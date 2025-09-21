@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
+import storyRoutes from "./routes/storyRoutes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -44,7 +45,9 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 🔹 Routes
 app.use("/auth", authRoutes);
+// Ab
 app.use("/posts", postRoutes);
+app.use("/stories", storyRoutes);
 
 // 🔹 Health check route
 app.get("/", (req, res) => res.send("✅ Backend is running"));

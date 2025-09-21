@@ -8,6 +8,7 @@ import {
   getAllPosts,
   getMyPosts,
   toggleLike,
+  deletePost,
 } from "../controllers/postController.js";
 
 const router = express.Router();
@@ -19,8 +20,7 @@ const storage = multer.diskStorage({
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
 const upload = multer({ storage });
 
@@ -37,5 +37,8 @@ router.get("/my-posts", protect, getMyPosts);
 
 // 🔹 Like / Unlike a post (protected)
 router.put("/:id/like", protect, toggleLike);
+
+// 🔹 Delete a post (protected, only owner can delete)
+router.delete("/:postId", protect, deletePost);
 
 export default router;
