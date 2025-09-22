@@ -1,17 +1,19 @@
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 
-// 🔹 Generate JWT and set cookie
+// 🔹 Generate JWT and set httpOnly cookie
 export const generateToken = (res, userId) => {
   const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
 
+  const isProd = process.env.NODE_ENV === "production";
+
   res.cookie("token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    secure: isProd,                   // HTTPS only in production
+    sameSite: isProd ? "None" : "Lax", // Lax for local dev, None for prod
+    maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
   });
 
   return token;
@@ -29,7 +31,8 @@ export const signup = async (req, res) => {
       return res.status(400).json({ message: "User already exists ❌" });
 
     const user = await User.create({ username, email, password });
-    generateToken(res, user._id);
+
+    generateToken(res, user._id); // ✅ Set cookie
 
     res.status(201).json({
       success: true,
@@ -55,7 +58,8 @@ export const login = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (user && (await user.matchPassword(password))) {
-      generateToken(res, user._id);
+      generateToken(res, user._id); // ✅ Set cookie
+
       return res.json({
         success: true,
         message: "Login successful ✅",
@@ -81,6 +85,7 @@ export const getProfile = async (req, res) => {
   try {
     if (!req.user)
       return res.status(401).json({ message: "Unauthorized ❌" });
+
     res.json({
       success: true,
       user: {
@@ -100,45 +105,33 @@ export const getProfile = async (req, res) => {
 // 🔹 Update Profile
 export const updateProfile = async (req, res) => {
   try {
-    if (!req.user)
-      return res
-        .status(401)
-        .json({ success: false, message: "Unauthorized ❌" });
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found ❌" });
 
-    const { username, bio } = req.body;
-    const updates = {};
+    // ✅ Update text fields
+    if (req.body.username) user.username = req.body.username;
+    if (req.body.bio) user.bio = req.body.bio;
 
-    if (username) updates.username = username;
-    if (bio) updates.bio = bio;
-
+    // ✅ Update profilePic if uploaded via multer + Cloudinary
     if (req.file && req.file.path) {
-      updates.profilePic = req.file.path; // ✅ Cloudinary se URL
+      user.profilePic = req.file.path;
     }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      updates,
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!updatedUser)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found ❌" });
+    await user.save();
 
     res.json({
       success: true,
       message: "Profile updated ✅",
       user: {
-        id: updatedUser._id,
-        username: updatedUser.username,
-        email: updatedUser.email,
-        bio: updatedUser.bio || "",
-        profilePic: updatedUser.profilePic || "",
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        bio: user.bio || "",
+        profilePic: user.profilePic || "",
       },
     });
   } catch (err) {
     console.error("❌ Update profile error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
