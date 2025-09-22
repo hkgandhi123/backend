@@ -6,6 +6,8 @@ import cors from "cors";
 import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
 import storyRoutes from "./routes/storyRoutes.js";
+import messagesRoutes from "./routes/messagesRoutes.js";
+
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -21,20 +23,20 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// 🔹 CORS setup
+// 🔹 CORS setup (cookies + frontend)
 const allowedOrigins = [
   "http://localhost:3000",
   "https://frontend-xntj.vercel.app",
-  "https://insta-mern.vercel.app"  // add this if actual frontend is here
+  "https://insta-mern.vercel.app"
 ];
 
 app.use(cors({
   origin: allowedOrigins,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true,  // ✅ allow cookies (important for JWT)
+  credentials: true, // ✅ important for cookie auth
 }));
 
-// ✅ Preflight request handling
+// ✅ Preflight requests
 app.options("*", cors({
   origin: allowedOrigins,
   credentials: true,
@@ -45,11 +47,11 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // 🔹 Routes
 app.use("/auth", authRoutes);
-// Ab
 app.use("/posts", postRoutes);
 app.use("/stories", storyRoutes);
+app.use("/messages", messagesRoutes);
 
-// 🔹 Health check route
+// 🔹 Health check
 app.get("/", (req, res) => res.send("✅ Backend is running"));
 
 // 🔹 MongoDB connection & server start
