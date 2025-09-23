@@ -1,4 +1,5 @@
 // server.js
+// server.js
 import express from "express";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -26,39 +27,43 @@ const httpServer = createServer(app);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Middleware
+// 🔹 Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CORS setup
+// 🔹 CORS setup (local + production)
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://frontend-xntj.vercel.app",
-  "https://insta-mern.vercel.app"
+  "https://bkc-frontend.vercel.app"
 ];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error("Not allowed by CORS"));
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true,
+  credentials: true, // ✅ cookies support
 }));
 
 app.options("*", cors({ origin: allowedOrigins, credentials: true }));
 
-// Static uploads
+// 🔹 Static uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Routes
+// 🔹 Routes
 app.use("/auth", authRoutes);
 app.use("/posts", postRoutes);
 app.use("/stories", storyRoutes);
 app.use("/messages", messagesRoutes);
 
-// Health check
+// 🔹 Health check
 app.get("/", (req, res) => res.send("✅ Backend is running"));
 
-// Socket.IO setup
+// 🔹 Socket.IO setup
 const io = new Server(httpServer, {
   cors: {
     origin: allowedOrigins,
@@ -95,7 +100,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// MongoDB + Start
+// 🔹 MongoDB + Start
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB connected");
