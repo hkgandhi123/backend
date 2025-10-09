@@ -1,8 +1,8 @@
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 
-// 🔹 Generate JWT and set httpOnly cookie
-export const generateToken = (res, userId) => {
+// 🔹 Generate JWT cookie
+const generateToken = (res, userId) => {
   const token = jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
@@ -11,9 +11,9 @@ export const generateToken = (res, userId) => {
 
   res.cookie("token", token, {
     httpOnly: true,
-    secure: isProd,                   // HTTPS only in production
-    sameSite: isProd ? "None" : "Lax", // Lax for local dev, None for prod
-    maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 
   return token;
@@ -23,22 +23,23 @@ export const generateToken = (res, userId) => {
 export const signup = async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password)
-      return res.status(400).json({ message: "All fields are required ❌" });
+    if (!username || !email || !password) {
+      return res.status(400).json({ message: "All fields required ❌" });
+    }
 
     const userExists = await User.findOne({ email });
-    if (userExists)
+    if (userExists) {
       return res.status(400).json({ message: "User already exists ❌" });
+    }
 
     const user = await User.create({ username, email, password });
-
-    generateToken(res, user._id); // ✅ Set cookie
+    const token = generateToken(res, user._id);
 
     res.status(201).json({
       success: true,
-      message: "Signup successful ✅",
+      token,
       user: {
-        id: user._id,
+        _id: user._id,
         username: user.username,
         email: user.email,
         bio: user.bio || "",
@@ -46,8 +47,8 @@ export const signup = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Signup error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ Signup error:", err.message);
+    res.status(500).json({ message: "Server error ❌" });
   }
 };
 
@@ -55,75 +56,28 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password required ❌" });
+    }
+
     const user = await User.findOne({ email });
-
-    if (user && (await user.matchPassword(password))) {
-      generateToken(res, user._id); // ✅ Set cookie
-
-      return res.json({
-        success: true,
-        message: "Login successful ✅",
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          bio: user.bio || "",
-          profilePic: user.profilePic || "",
-        },
-      });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials ❌" });
     }
 
-    res.status(401).json({ message: "Invalid email or password ❌" });
-  } catch (err) {
-    console.error("❌ Login error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials ❌" });
+    }
 
-// 🔹 Get Profile
-export const getProfile = async (req, res) => {
-  try {
-    if (!req.user)
-      return res.status(401).json({ message: "Unauthorized ❌" });
+    const token = generateToken(res, user._id);
 
     res.json({
       success: true,
+      token,
       user: {
-        id: req.user._id,
-        username: req.user.username,
-        email: req.user.email,
-        bio: req.user.bio || "",
-        profilePic: req.user.profilePic || "",
-      },
-    });
-  } catch (err) {
-    console.error("❌ Get profile error:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// 🔹 Update Profile
-export const updateProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: "User not found ❌" });
-
-    // ✅ Update text fields
-    if (req.body.username) user.username = req.body.username;
-    if (req.body.bio) user.bio = req.body.bio;
-
-    // ✅ Update profilePic if uploaded via multer + Cloudinary
-    if (req.file && req.file.path) {
-      user.profilePic = req.file.path;
-    }
-
-    await user.save();
-
-    res.json({
-      success: true,
-      message: "Profile updated ✅",
-      user: {
-        id: user._id,
+        _id: user._id,
         username: user.username,
         email: user.email,
         bio: user.bio || "",
@@ -131,7 +85,96 @@ export const updateProfile = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Update profile error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ Login error:", err.message);
+    res.status(500).json({ message: "Server error ❌" });
+  }
+};
+
+// 🔹 Logout
+export const logout = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
+  res.json({ success: true, message: "Logged out ✅" });
+};
+
+// 🔹 Get profile
+export const getProfile = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized ❌" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        _id: req.user._id,
+        username: req.user.username,
+        email: req.user.email,
+        bio: req.user.bio || "",
+        profilePic: req.user.profilePic || "",
+      },
+    });
+  } catch (err) {
+    console.error("❌ GetProfile error:", err.message);
+    res.status(500).json({ message: "Server error ❌" });
+  }
+};
+
+// 🔹 Reset Password
+export const resetPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters ❌" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found ❌" });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ success: true, message: "Password updated successfully ✅" });
+  } catch (err) {
+    console.error("❌ ResetPassword error:", err.message);
+    res.status(500).json({ message: "Server error ❌" });
+  }
+};
+
+// 🔹 Update Profile
+export const updateProfile = async (req, res) => {
+  try {
+    const { username, bio } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found ❌" });
+
+    if (username) user.username = username;
+    if (bio) user.bio = bio;
+
+    if (req.file) user.profilePic = `/uploads/${req.file.filename}`;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        bio: user.bio || "",
+        profilePic: user.profilePic || "",
+      },
+    });
+  } catch (err) {
+    console.error("❌ UpdateProfile error:", err.message);
+    res.status(500).json({ message: "Server error ❌" });
   }
 };

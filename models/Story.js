@@ -3,8 +3,10 @@ import mongoose from "mongoose";
 const storySchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    media: { type: String, required: true }, // image or video path
-    createdAt: { type: Date, default: Date.now, expires: 86400 }, // auto delete after 24h
+    image: { type: String },          // optional for text-only stories
+    type: { type: String, default: "text" }, // "image", "video", "text"
+    caption: { type: String },
+    expiresAt: { type: Date, default: () => Date.now() + 24 * 60 * 60 * 1000 },
   },
   { timestamps: true }
 );

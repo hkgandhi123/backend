@@ -15,6 +15,9 @@ import authRoutes from "./routes/authRoutes.js";
 import postRoutes from "./routes/postRoutes.js";
 import storyRoutes from "./routes/storyRoutes.js";
 import messagesRoutes from "./routes/messagesRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import profileRoutes from "./routes/profileRoutes.js";
+
 
 // Models
 import Message from "./models/Message.js";
@@ -27,38 +30,47 @@ const httpServer = createServer(app);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ✅ Allowed Origins (local + vercel)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://bkc-frontend.vercel.app",
+];
+
 // 🔹 Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// 🔹 CORS setup (local + production)
-const allowedOrigins = [
-  "http://localhost:3000",
-  "https://bkc-frontend.vercel.app"
-];
+// 🔹 CORS setup
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // ✅ Postman/test ke liye
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      console.warn("❌ Blocked CORS request from:", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like Postman)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error("Not allowed by CORS"));
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true, // ✅ cookies support
-}));
-
+// Preflight (OPTIONS) requests handle
 app.options("*", cors({ origin: allowedOrigins, credentials: true }));
 
-// 🔹 Static uploads
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// uploads folder ko public banao
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // 🔹 Routes
 app.use("/auth", authRoutes);
 app.use("/posts", postRoutes);
 app.use("/stories", storyRoutes);
 app.use("/messages", messagesRoutes);
+app.use("/users", userRoutes);
+app.use("/profile", profileRoutes);
+
 
 // 🔹 Health check
 app.get("/", (req, res) => res.send("✅ Backend is running"));
@@ -86,9 +98,9 @@ io.on("connection", (socket) => {
       await msg.save();
       await msg.populate("sender", "username _id");
 
-      // Emit to all recipients + sender
       const recipients = data.recipients || [];
-      recipients.forEach(r => socket.to(r).emit("receiveMessage", msg));
+      recipients.forEach((r) => socket.to(r).emit("receiveMessage", msg));
+
       socket.emit("receiveMessage", msg);
     } catch (err) {
       console.error("Socket sendMessage error:", err);
@@ -101,7 +113,8 @@ io.on("connection", (socket) => {
 });
 
 // 🔹 MongoDB + Start
-mongoose.connect(process.env.MONGO_URI)
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB connected");
     const PORT = process.env.PORT || 5000;
@@ -109,4 +122,4 @@ mongoose.connect(process.env.MONGO_URI)
       console.log(`🚀 Server + Socket.IO running on port ${PORT}`)
     );
   })
-  .catch(err => console.error("❌ MongoDB error:", err));
+  .catch((err) => console.error("❌ MongoDB error:", err));

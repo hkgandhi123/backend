@@ -1,44 +1,43 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 import { protect } from "../middleware/authMiddleware.js";
-import {
-  createPost,
-  getAllPosts,
-  getMyPosts,
-  toggleLike,
-  deletePost,
-} from "../controllers/postController.js";
+import Post from "../models/Post.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
 
-// 🔹 Multer setup for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join("uploads");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
+// Configure Multer
+const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
-/* ------------------- ROUTES ------------------- */
+// Cloudinary config
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET,
+});
 
-// 🔹 Create Post (protected, image optional)
-router.post("/", protect, upload.single("image"), createPost);
+// Create post
+router.post("/posts", protect, upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "Image is required" });
 
-// 🔹 Get all posts (public feed)
-router.get("/", getAllPosts);
+    // Upload image to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "posts",
+    });
 
-// 🔹 Get my posts (protected)
-router.get("/my-posts", protect, getMyPosts);
+    const newPost = await Post.create({
+      user: req.user.id,
+      caption: req.body.caption,
+      image: result.secure_url,
+    });
 
-// 🔹 Like / Unlike a post (protected)
-router.put("/:id/like", protect, toggleLike);
-
-// 🔹 Delete a post (protected, only owner can delete)
-router.delete("/:postId", protect, deletePost);
+    res.status(201).json({ post: newPost });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+});
 
 export default router;
