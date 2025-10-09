@@ -6,23 +6,22 @@ import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
 
-// Configure Multer
+// Multer setup
 const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
-// Cloudinary config
+// Cloudinary setup
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
   api_key: process.env.CLOUD_API_KEY,
   api_secret: process.env.CLOUD_API_SECRET,
 });
 
-// Create post
-router.post("/posts", protect, upload.single("image"), async (req, res) => {
+// ✅ Create post
+router.post("/", protect, upload.single("image"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ message: "Image is required" });
+    if (!req.file) return res.status(400).json({ message: "Image required" });
 
-    // Upload image to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "posts",
     });
@@ -35,7 +34,20 @@ router.post("/posts", protect, upload.single("image"), async (req, res) => {
 
     res.status(201).json({ post: newPost });
   } catch (err) {
-    console.error(err);
+    console.error("Create post error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ Get all posts
+router.get("/", async (req, res) => {
+  try {
+    const posts = await Post.find()
+      .populate("user", "username profilePic")
+      .sort({ createdAt: -1 });
+    res.json(posts);
+  } catch (err) {
+    console.error("Get posts error:", err);
     res.status(500).json({ message: err.message });
   }
 });
