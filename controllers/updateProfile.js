@@ -17,23 +17,23 @@ export const updateProfile = async (req, res) => {
     if (req.file) {
       const user = await User.findById(req.user._id);
 
-      // Delete old photo from Cloudinary if exists
+      // Delete old Cloudinary image
       if (user?.profilePicPublicId) {
         try {
           await cloudinary.uploader.destroy(user.profilePicPublicId);
           console.log("🗑️ Old profilePic deleted from Cloudinary");
-        } catch (delErr) {
-          console.error("❌ Cloudinary delete error:", delErr);
+        } catch (err) {
+          console.error("❌ Cloudinary delete error:", err);
         }
       }
 
-      // ✅ Fix duplicate /uploads/ and remove starting slashes
+      // Fix duplicate 'uploads/' and starting slashes
       let profilePath = req.file.path;
       if (!profilePath.startsWith("http")) {
         profilePath = profilePath.replace(/^(\/)?(uploads\/)+/, "uploads/");
       }
 
-      updates.profilePic = profilePath;
+      updates.profilePic = profilePath;           // uploads/filename.ext
       updates.profilePicPublicId = req.file.filename;
     }
 
