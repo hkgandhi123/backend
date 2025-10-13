@@ -4,9 +4,7 @@ import cloudinary from "../config/cloudinary.js";
 export const updateProfile = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Unauthorized ❌" });
+      return res.status(401).json({ success: false, message: "Unauthorized ❌" });
     }
 
     const { username, email, bio } = req.body;
@@ -19,7 +17,7 @@ export const updateProfile = async (req, res) => {
     if (req.file) {
       const user = await User.findById(req.user._id);
 
-      // Delete old photo from Cloudinary (if present)
+      // Delete old photo from Cloudinary if exists
       if (user?.profilePicPublicId) {
         try {
           await cloudinary.uploader.destroy(user.profilePicPublicId);
@@ -29,9 +27,8 @@ export const updateProfile = async (req, res) => {
         }
       }
 
-      // Fix duplicate /uploads/
+      // ✅ Fix duplicate /uploads/ and remove starting slashes
       let profilePath = req.file.path;
-
       if (!profilePath.startsWith("http")) {
         profilePath = profilePath.replace(/^(\/)?(uploads\/)+/, "uploads/");
       }
@@ -46,9 +43,7 @@ export const updateProfile = async (req, res) => {
     }).select("-password");
 
     if (!updatedUser) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found ❌" });
+      return res.status(404).json({ success: false, message: "User not found ❌" });
     }
 
     res.json({
