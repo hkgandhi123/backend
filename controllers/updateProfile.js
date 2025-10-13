@@ -3,8 +3,9 @@ import cloudinary from "../config/cloudinary.js";
 
 export const updateProfile = async (req, res) => {
   try {
-    if (!req.user || !req.user._id)
+    if (!req.user?._id) {
       return res.status(401).json({ success: false, message: "Unauthorized ❌" });
+    }
 
     const { username, email, bio } = req.body;
     const updates = {};
@@ -16,23 +17,24 @@ export const updateProfile = async (req, res) => {
     if (req.file) {
       const user = await User.findById(req.user._id);
 
-      // Delete old photo from Cloudinary if exists
+      // Delete old Cloudinary photo if exists
       if (user?.profilePicPublicId) {
         try {
           await cloudinary.uploader.destroy(user.profilePicPublicId);
-          console.log("🗑️ Old profilePic deleted from Cloudinary");
+          console.log("🗑️ Old profilePic deleted");
         } catch (err) {
-          console.error("❌ Error deleting old Cloudinary image:", err);
+          console.error("❌ Cloudinary delete error:", err);
         }
       }
 
-      // Upload new pic to Cloudinary
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "profilePics",
-      });
+      // Fix duplicate /uploads/ and leading slashes
+      let profilePath = req.file.path;
+      if (!profilePath.startsWith("http")) {
+        profilePath = profilePath.replace(/^(\/)?(uploads\/)+/, "uploads/");
+      }
 
-      updates.profilePic = result.secure_url;        // Full URL
-      updates.profilePicPublicId = result.public_id; // Save public_id for future deletion
+      updates.profilePic = profilePath;
+      updates.profilePicPublicId = req.file.filename;
     }
 
     const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, {
@@ -40,8 +42,9 @@ export const updateProfile = async (req, res) => {
       runValidators: true,
     }).select("-password");
 
-    if (!updatedUser)
+    if (!updatedUser) {
       return res.status(404).json({ success: false, message: "User not found ❌" });
+    }
 
     res.json({ success: true, message: "Profile updated ✅", user: updatedUser });
   } catch (err) {
