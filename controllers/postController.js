@@ -108,3 +108,22 @@ export const unfollowUser = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+export const deletePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const post = await Post.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found ❌" });
+
+    // Only owner can delete
+    if (post.user.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Unauthorized ❌" });
+
+    await post.deleteOne();
+    res.json({ message: "Post deleted ✅" });
+  } catch (err) {
+    console.error("Error deleting post:", err);
+    res.status(500).json({ message: err.message });
+  }
+};

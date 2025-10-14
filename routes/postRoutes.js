@@ -1,7 +1,8 @@
 // backend/routes/posts.js
 import express from "express";
 import Post from "../models/Post.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { deletePost } from "../controllers/postController.js";
+import { protect } from "../middleware/authMiddleware.js"; // use this
 
 const router = express.Router();
 
@@ -16,5 +17,8 @@ router.get("/", protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// DELETE a post (only owner)
+router.delete("/:id", protect, deletePost); // use protect here
 
 export default router;
