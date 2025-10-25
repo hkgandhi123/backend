@@ -1,24 +1,20 @@
-// backend/routes/posts.js
 import express from "express";
-import Post from "../models/Post.js";
-import { deletePost } from "../controllers/postController.js";
-import { protect } from "../middleware/authMiddleware.js"; // use this
+import { createPost, getPosts, updatePost, deletePost } from "../controllers/postController.js";
+import { protect } from "../middleware/authMiddleware.js";
+import upload from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-// GET all posts
-router.get("/", protect, async (req, res) => {
-  try {
-    const posts = await Post.find({})
-      .sort({ createdAt: -1 })
-      .populate("user", "username profilePic");
-    res.json(posts);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+// ✅ Get all posts (protected)
+router.get("/", protect, getPosts);
 
-// DELETE a post (only owner)
-router.delete("/:id", protect, deletePost); // use protect here
+// ✅ Create a new post (protected + file upload)
+router.post("/", protect, upload("posts").single("image"), createPost);
+
+// ✅ Update post
+router.put("/:id", protect, upload("posts").single("image"), updatePost);
+
+// ✅ Delete post
+router.delete("/:id", protect, deletePost);
 
 export default router;

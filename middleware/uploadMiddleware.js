@@ -1,17 +1,34 @@
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import multer from "multer";
-import cloudinary from "../config/cloudinary.js";
+import path from "path";
+import fs from "fs";
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "uploads",   // you can change to "profile_pics" or "stories"
-    allowed_formats: ["jpg", "png", "jpeg", "mp4", "mov"],
-    transformation: [{ width: 500, height: 500, crop: "limit" }],
-  },
-});
+// 🧠 Dynamic folder upload (e.g. upload("posts"))
+const upload = (folderName = "uploads") => {
+  // Ensure the upload folder exists
+  const uploadPath = `uploads/${folderName}`;
+  fs.mkdirSync(uploadPath, { recursive: true });
 
-const upload = multer({ storage });
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      cb(
+        null,
+        `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(
+          file.originalname
+        )}`
+      );
+    },
+  });
 
-export default upload;   // ✅ default export
+  const fileFilter = (req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Only image files are allowed!"), false);
+  };
 
+  return multer({ storage, fileFilter });
+};
+
+export default upload;

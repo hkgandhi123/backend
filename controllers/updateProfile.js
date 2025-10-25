@@ -3,7 +3,7 @@ import cloudinary from "../config/cloudinary.js";
 
 export const updateProfile = async (req, res) => {
   try {
-    // 🛡️ Check authentication
+    // 🛡️ Verify authentication
     if (!req.user?._id) {
       return res.status(401).json({
         success: false,
@@ -14,34 +14,37 @@ export const updateProfile = async (req, res) => {
     const { username, email, bio } = req.body;
     const updates = {};
 
-    if (username) updates.username = username;
-    if (email) updates.email = email;
-    if (bio) updates.bio = bio;
+    if (username) updates.username = username.trim();
+    if (email) updates.email = email.trim();
+    if (bio) updates.bio = bio.trim();
 
-    // 📸 Handle new profile photo upload
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found ❌",
+      });
+    }
+
+    // ☁️ Handle new profile photo
     if (req.file) {
-      const user = await User.findById(req.user._id);
-
-      // 🗑️ Delete old Cloudinary image if available
-      if (user?.profilePicPublicId) {
-        try {
-          await cloudinary.uploader.destroy(user.profilePicPublicId);
-          console.log("🗑️ Old Cloudinary profilePic deleted");
-        } catch (err) {
-          console.error("❌ Cloudinary delete error:", err);
-        }
-      }
-
-      // ☁️ Upload new photo directly to Cloudinary
       try {
+        // 🗑️ Delete old image if exists
+        if (user.profilePicPublicId) {
+          await cloudinary.uploader.destroy(user.profilePicPublicId);
+          console.log("🗑️ Deleted old Cloudinary image:", user.profilePicPublicId);
+        }
+
+        // ☁️ Upload new image
         const result = await cloudinary.uploader.upload(req.file.path, {
           folder: "profilePics",
           transformation: [{ width: 500, height: 500, crop: "limit" }],
         });
 
-        updates.profilePic = result.secure_url; // ✅ full Cloudinary URL
+        updates.profilePic = result.secure_url;
         updates.profilePicPublicId = result.public_id;
-        console.log("☁️ Uploaded to Cloudinary:", result.secure_url);
+
+        console.log("☁️ New image uploaded:", result.secure_url);
       } catch (uploadErr) {
         console.error("❌ Cloudinary upload error:", uploadErr);
         return res.status(500).json({
@@ -51,24 +54,21 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // 🧩 Update user in DB
-    const updatedUser = await User.findByIdAndUpdate(req.user._id, updates, {
-      new: true,
-      runValidators: true,
-    }).select("-password");
+    // 🧩 Update user data
+    Object.assign(user, updates);
+    await user.save();
 
-    if (!updatedUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found ❌",
-      });
-    }
-
-    // ✅ Success response
+    // ✅ Response
     res.json({
       success: true,
       message: "Profile updated successfully ✅",
-      user: updatedUser,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        bio: user.bio || "",
+        profilePic: user.profilePic || "",
+      },
     });
   } catch (err) {
     console.error("❌ Update profile error:", err);
