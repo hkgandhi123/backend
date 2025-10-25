@@ -1,129 +1,109 @@
-import User from "../models/User.js";
 import Post from "../models/Post.js";
+import cloudinary from "../config/cloudinary.js";
 
-// 🔹 Logged-in user's profile (with posts)
-export const getMyProfile = async (req, res) => {
+// 🟢 GET all posts (latest first)
+export const getPosts = async (req, res) => {
   try {
-    // Fetch fresh user from DB
-    const user = await User.findById(req.user._id)
-      .select("-password")
-      .lean();
-    if (!user) return res.status(404).json({ message: "User not found ❌" });
+    const posts = await Post.find()
+      .populate("user", "username profilePic")
+      .sort({ createdAt: -1 });
 
-    // Fetch user's posts
-    const posts = await Post.find({ user: user._id })
-      .sort({ createdAt: -1 })
-      .populate("user", "username profilePic");
-
-    // Send user + posts
-    res.json({ user: { ...user, posts } });
+    res.status(200).json({ success: true, posts });
   } catch (err) {
-    console.error("Error in getMyProfile:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ getPosts error:", err);
+    res.status(500).json({ message: "Failed to fetch posts" });
   }
 };
 
-// 🔹 Public profile
-export const getPublicProfile = async (req, res) => {
+// 🟢 CREATE post (supports file upload or image URL)
+export const createPost = async (req, res) => {
   try {
-    const { id } = req.params;
-    if (id === "me")
-      return res.status(400).json({ message: "Use /profile/me for your own profile" });
+    if (!req.user) return res.status(401).json({ message: "Not authorized" });
 
-    const user = await User.findById(id).select("-password").lean();
-    if (!user) return res.status(404).json({ message: "User not found ❌" });
+    let imageUrl = req.body.image || null;
+    let imagePublicId = null;
 
-    // Fetch user's posts
-    const posts = await Post.find({ user: user._id })
-      .sort({ createdAt: -1 })
-      .populate("user", "username profilePic");
-
-    res.json({
-      user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        bio: user.bio || "",
-        profilePic: user.profilePic || "",
-        followers: user.followers || [],
-        following: user.following || [],
-        posts,
-      },
-    });
-  } catch (err) {
-    console.error("Error in getPublicProfile:", err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
-// 🔹 Follow / Unfollow
-export const followUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const currentUser = req.user;
-    if (!currentUser) return res.status(401).json({ message: "Unauthorized" });
-    if (currentUser._id.toString() === id)
-      return res.status(400).json({ message: "Cannot follow yourself" });
-
-    const userToFollow = await User.findById(id);
-    if (!userToFollow) return res.status(404).json({ message: "User not found ❌" });
-
-    if (!userToFollow.followers.includes(currentUser._id)) {
-      userToFollow.followers.push(currentUser._id);
-      await userToFollow.save();
-
-      currentUser.following.push(userToFollow._id);
-      await currentUser.save();
+    // ✅ If user uploaded file → upload to Cloudinary
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "posts",
+      });
+      imageUrl = result.secure_url;
+      imagePublicId = result.public_id;
     }
 
-    res.json({ success: true, message: "Followed ✅" });
+    if (!imageUrl)
+      return res.status(400).json({ message: "Image is required" });
+
+    const newPost = new Post({
+      user: req.user._id,
+      caption: req.body.caption || "",
+      type: req.body.type || "post",
+      image: imageUrl,
+      imagePublicId,
+    });
+
+    await newPost.save();
+    await newPost.populate("user", "username profilePic");
+
+    res.status(201).json({ success: true, post: newPost });
   } catch (err) {
-    console.error("Error in followUser:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ createPost error:", err);
+    res.status(500).json({ message: "Failed to create post" });
   }
 };
 
-export const unfollowUser = async (req, res) => {
+// 🟡 UPDATE post
+export const updatePost = async (req, res) => {
   try {
-    const { id } = req.params;
-    const currentUser = req.user;
-    if (!currentUser) return res.status(401).json({ message: "Unauthorized" });
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (post.user.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
 
-    const userToUnfollow = await User.findById(id);
-    if (!userToUnfollow) return res.status(404).json({ message: "User not found ❌" });
+    // ✅ Update caption
+    if (req.body.caption) post.caption = req.body.caption;
 
-    userToUnfollow.followers = userToUnfollow.followers.filter(
-      (f) => f.toString() !== currentUser._id.toString()
-    );
-    await userToUnfollow.save();
+    // ✅ Update image (upload new or use direct link)
+    if (req.file) {
+      // Delete old image from Cloudinary (if exists)
+      if (post.imagePublicId)
+        await cloudinary.uploader.destroy(post.imagePublicId);
 
-    currentUser.following = currentUser.following.filter(
-      (f) => f.toString() !== userToUnfollow._id.toString()
-    );
-    await currentUser.save();
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "posts",
+      });
+      post.image = result.secure_url;
+      post.imagePublicId = result.public_id;
+    } else if (req.body.image) {
+      post.image = req.body.image;
+      post.imagePublicId = null;
+    }
 
-    res.json({ success: true, message: "Unfollowed ❌" });
+    await post.save();
+    res.status(200).json({ success: true, post });
   } catch (err) {
-    console.error("Error in unfollowUser:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ updatePost error:", err);
+    res.status(500).json({ message: "Failed to update post" });
   }
 };
 
+// 🔴 DELETE post
 export const deletePost = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const post = await Post.findById(id);
-    if (!post) return res.status(404).json({ message: "Post not found ❌" });
-
-    // Only owner can delete
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
     if (post.user.toString() !== req.user._id.toString())
-      return res.status(403).json({ message: "Unauthorized ❌" });
+      return res.status(403).json({ message: "Not authorized" });
+
+    // ✅ Delete image from Cloudinary (if exists)
+    if (post.imagePublicId)
+      await cloudinary.uploader.destroy(post.imagePublicId);
 
     await post.deleteOne();
-    res.json({ message: "Post deleted ✅" });
+    res.status(200).json({ success: true, message: "Post deleted successfully" });
   } catch (err) {
-    console.error("Error deleting post:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ deletePost error:", err);
+    res.status(500).json({ message: "Failed to delete post" });
   }
 };

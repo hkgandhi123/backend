@@ -1,5 +1,4 @@
 // server.js
-// server.js
 import express from "express";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
@@ -18,7 +17,6 @@ import messagesRoutes from "./routes/messagesRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
 
-
 // Models
 import Message from "./models/Message.js";
 
@@ -30,10 +28,11 @@ const httpServer = createServer(app);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Allowed Origins (local + vercel)
+// ✅ Allowed Origins
 const allowedOrigins = [
   "http://localhost:3000",
   "https://bkc-frontend.vercel.app",
+  "https://bkc-frontend-l8rdphzim-hariom-gandhis-projects.vercel.app", // latest frontend
 ];
 
 // 🔹 Middleware
@@ -45,10 +44,8 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // ✅ Postman/test ke liye
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+      if (!origin) return callback(null, true); // allow Postman/testing
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       console.warn("❌ Blocked CORS request from:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -57,22 +54,27 @@ app.use(
   })
 );
 
-// Preflight (OPTIONS) requests handle
+// Preflight (OPTIONS)
 app.options("*", cors({ origin: allowedOrigins, credentials: true }));
 
-// uploads folder ko public banao
+// 🔹 Static uploads folder
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// 🔹 Routes
-app.use("/auth", authRoutes);
+// 🔹 Debug request logger
+app.use((req, res, next) => {
+  console.log(`[Request] ${req.method} ${req.url}`);
+  next();
+});
+
+// 🔹 API Routes (✅ now prefixed with /api)
+app.use("/", authRoutes);
 app.use("/posts", postRoutes);
 app.use("/stories", storyRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/users", userRoutes);
 app.use("/profile", profileRoutes);
 
-
-// 🔹 Health check
+// 🔹 Health check route
 app.get("/", (req, res) => res.send("✅ Backend is running"));
 
 // 🔹 Socket.IO setup
@@ -86,12 +88,10 @@ const io = new Server(httpServer, {
 io.on("connection", (socket) => {
   console.log("🟢 User connected:", socket.id);
 
-  // Join personal room (userId)
   socket.on("join", ({ userId }) => {
     if (userId) socket.join(userId);
   });
 
-  // Send message
   socket.on("sendMessage", async (data) => {
     try {
       const msg = new Message(data);
@@ -112,7 +112,13 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔹 MongoDB + Start
+// 🔹 Global Error Handler (optional but helpful)
+app.use((err, req, res, next) => {
+  console.error("❌ Server error:", err.message);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+// 🔹 MongoDB + Start Server
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {

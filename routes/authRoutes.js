@@ -8,7 +8,7 @@ import {
   updateProfile,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
-import upload from "../middleware/uploadMiddleware.js"; // agar multer use ho raha hai
+import upload from "../middleware/uploadMiddleware.js"; // dynamic Cloudinary upload
 
 const router = express.Router();
 
@@ -20,6 +20,13 @@ router.post("/logout", logout);
 // 🔹 Protected routes (JWT required)
 router.get("/profile", protect, getProfile);
 router.post("/reset-password", protect, resetPassword);
-router.put("/update-profile", protect, upload.single("profilePic"), updateProfile);
+
+// ✅ Use upload("profiles") since your middleware is a function
+router.put(
+  "/update-profile",
+  protect,
+  upload("profiles").single("profilePic"),
+  updateProfile
+);
 
 export default router;
