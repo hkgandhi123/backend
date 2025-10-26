@@ -28,11 +28,10 @@ const httpServer = createServer(app);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Allowed Origins
+// ✅ Allowed Origins (regex for any Vercel frontend)
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://bkc-frontend.vercel.app",
-  "https://bkc-frontend-l8rdphzim-hariom-gandhis-projects.vercel.app", // latest frontend
+  /\.vercel\.app$/, // allow any Vercel subdomain
 ];
 
 // 🔹 Middleware
@@ -45,7 +44,11 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true); // allow Postman/testing
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      const allowed = allowedOrigins.some((o) =>
+        o instanceof RegExp ? o.test(origin) : o === origin
+      );
+      if (allowed) return callback(null, true);
+
       console.warn("❌ Blocked CORS request from:", origin);
       return callback(new Error("Not allowed by CORS"));
     },
@@ -60,14 +63,13 @@ app.options("*", cors({ origin: allowedOrigins, credentials: true }));
 // 🔹 Static uploads folder
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-
 // 🔹 Debug request logger
 app.use((req, res, next) => {
   console.log(`[Request] ${req.method} ${req.url}`);
   next();
 });
 
-// 🔹 API Routes (✅ now prefixed with /api)
+// 🔹 API Routes
 app.use("/", authRoutes);
 app.use("/posts", postRoutes);
 app.use("/stories", storyRoutes);
@@ -113,7 +115,7 @@ io.on("connection", (socket) => {
   });
 });
 
-// 🔹 Global Error Handler (optional but helpful)
+// 🔹 Global Error Handler
 app.use((err, req, res, next) => {
   console.error("❌ Server error:", err.message);
   res.status(500).json({ error: "Internal Server Error" });
