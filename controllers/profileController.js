@@ -1,16 +1,18 @@
 import User from "../models/User.js";
 import Post from "../models/Post.js";
 
+
+/* ------------------ PROFILE CONTROLLERS ------------------ */
+
 // 🔹 Logged-in user's profile
 export const getMyProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).lean();
     if (!user) return res.status(404).json({ message: "User not found ❌" });
 
-    // 🔹 Fetch user's posts and sort by newest first
     const posts = await Post.find({ user: user._id })
       .sort({ createdAt: -1 })
-      .populate("user", "username profilePic"); // populate user info
+      .populate("user", "username profilePic");
 
     res.json({
       user: {
@@ -30,14 +32,11 @@ export const getPublicProfile = async (req, res) => {
     const { id } = req.params;
 
     if (id === "me")
-      return res
-        .status(400)
-        .json({ message: "Use /profile/me for your own profile" });
+      return res.status(400).json({ message: "Use /profile/me for your own profile" });
 
     const user = await User.findById(id).lean();
     if (!user) return res.status(404).json({ message: "User not found ❌" });
 
-    // 🔹 Fetch user's posts
     const posts = await Post.find({ user: user._id })
       .sort({ createdAt: -1 })
       .populate("user", "username profilePic");
@@ -112,6 +111,24 @@ export const unfollowUser = async (req, res) => {
     res.json({ success: true, message: "Unfollowed ❌" });
   } catch (err) {
     console.error("Error in unfollowUser:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ------------------ UPLOAD PROFILE PICTURE ------------------ */
+export const uploadProfilePic = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found ❌" });
+
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    user.profilePic = req.file.path; // save file path
+    await user.save();
+
+    res.json({ success: true, profilePic: resolveURL(user.profilePic) });
+  } catch (err) {
+    console.error("Error in uploadProfilePic:", err);
     res.status(500).json({ message: err.message });
   }
 };
