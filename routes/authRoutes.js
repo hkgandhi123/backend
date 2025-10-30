@@ -8,7 +8,9 @@ import {
   updateProfile,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
-import upload from "../middleware/uploadMiddleware.js"; // dynamic Cloudinary upload
+import upload from "../middleware/uploadMiddleware.js";
+
+
 
 const router = express.Router();
 

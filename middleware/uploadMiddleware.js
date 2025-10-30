@@ -2,8 +2,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-// ✅ Dynamic upload (e.g. upload("posts"))
-export const upload = (folderName = "uploads") => {
+const upload = (folderName = "uploads") => {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       const uploadPath = path.join("uploads", folderName);
@@ -12,7 +11,10 @@ export const upload = (folderName = "uploads") => {
     },
     filename: (req, file, cb) => {
       const uniqueName =
-        Date.now() + "-" + Math.round(Math.random() * 1e9) + path.extname(file.originalname);
+        Date.now() +
+        "-" +
+        Math.round(Math.random() * 1e9) +
+        path.extname(file.originalname);
       cb(null, uniqueName);
     },
   });
@@ -30,7 +32,7 @@ export const upload = (folderName = "uploads") => {
       "video/webm",
     ];
 
-    if (!file) return cb(null, false); // ✅ do not reject request
+    if (!file) return cb(null, false);
     if (allowed.includes(file.mimetype)) cb(null, true);
     else cb(new Error("Only image or video files are allowed!"), false);
   };
@@ -38,4 +40,4 @@ export const upload = (folderName = "uploads") => {
   return multer({ storage, fileFilter });
 };
 
-export default upload;
+export default upload; // ✅ default export

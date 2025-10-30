@@ -14,70 +14,49 @@ cloudinary.config({
 /* ------------------ Create Post ------------------ */
 export const createPost = async (req, res) => {
   try {
-    console.log("🟢 [POST] /posts triggered");
-    console.log("📦 req.body:", req.body);
-    console.log("📸 req.file:", req.file);
-
-    // ✅ Check login
-    if (!req.user?._id) {
-      return res
-        .status(401)
-        .json({ message: "Please login before creating a post ❌" });
-    }
+    console.log("📥 Incoming POST request...");
+    console.log("User:", req.user?._id);
+    console.log("File:", req.file);
+    console.log("Body:", req.body);
 
     const { title, subtitle, content } = req.body;
 
-    // ✅ Validation
-    if (!title && !content && !req.file) {
-      return res
-        .status(400)
-        .json({ message: "Post must contain text or media ❌" });
+    // If no user is attached, stop
+    if (!req.user) {
+      console.error("❌ Missing user in request (check auth middleware)");
+      return res.status(401).json({ message: "Unauthorized: No user found" });
     }
 
-    // ✅ Upload media if exists
-    let mediaUrl = "";
-    if (req.file?.path) {
-      try {
-        console.log("☁️ Uploading file to Cloudinary...");
-        const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-          folder: "mern_posts",
-          resource_type: "auto",
-        });
-        mediaUrl = uploadResult.secure_url;
-        console.log("✅ Uploaded:", mediaUrl);
-      } catch (err) {
-        console.error("❌ Cloudinary upload error:", err.message);
-        return res
-          .status(500)
-          .json({ message: "Media upload failed ❌", error: err.message });
-      } finally {
-        if (req.file?.path && fs.existsSync(req.file.path))
-          fs.unlinkSync(req.file.path);
-      }
+    // If no content or title, block empty post
+    if (!content && !title && !req.file) {
+      console.error("❌ Empty post content");
+      return res.status(400).json({ message: "Post content is empty" });
     }
 
-    // ✅ Save to DB
-    const newPost = await Post.create({
+    // Create the post object
+    const newPost = new Post({
       user: req.user._id,
-      title: title?.trim() || "",
-      subtitle: subtitle?.trim() || "",
-      content: content?.trim() || "",
-      media: mediaUrl,
+      title,
+      subtitle,
+      content,
+      mediaUrl: req.file ? `/uploads/posts/${req.file.filename}` : null,
+      mediaType: req.file
+        ? req.file.mimetype.startsWith("video")
+          ? "video"
+          : "image"
+        : null,
     });
 
-    await newPost.populate("user", "username profilePic");
+    console.log("🛠 Creating post:", newPost);
 
-    res.status(201).json({
-      success: true,
-      message: "Post created successfully ✅",
-      post: newPost,
-    });
-  } catch (err) {
-    console.error("🔥 CreatePost error:", err);
-    res.status(500).json({
-      message: "Internal Server Error ❌",
-      error: err.message || err,
-    });
+    await newPost.save();
+
+    console.log("✅ Post saved successfully!");
+
+    res.status(201).json({ message: "Post created successfully", post: newPost });
+  } catch (error) {
+    console.error("❌ Server error in createPost:", error);
+    res.status(500).json({ error: "Internal Server Error", details: error.message });
   }
 };
 
