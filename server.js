@@ -30,8 +30,9 @@ const __dirname = path.dirname(__filename);
 
 // ✅ Allowed Origins (regex for any Vercel frontend)
 const allowedOrigins = [
-  "http://localhost:3000",
-  /\.vercel\.app$/, // allow any Vercel subdomain
+  "http://localhost:3000", 
+  "https://bkc-frontend.vercel.app" ,
+  /\.vercel\.app$/,  // allow any Vercel subdomain
 ];
 
 // 🔹 Middleware
@@ -61,7 +62,10 @@ app.use(
 app.options("*", cors({ origin: allowedOrigins, credentials: true }));
 
 // 🔹 Static uploads folder
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+const uploadsPath = path.join(__dirname, "uploads");
+console.log("📂 Serving uploads from:", uploadsPath);
+app.use("/uploads", express.static(uploadsPath));
+
 
 // 🔹 Debug request logger
 app.use((req, res, next) => {
