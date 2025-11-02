@@ -1,13 +1,12 @@
 import User from "../models/User.js";
 import Post from "../models/Post.js";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 
-
-/* ------------------ PROFILE CONTROLLERS ------------------ */
-
-// 🔹 Logged-in user's profile
+/* ------------------ GET LOGGED-IN USER PROFILE ------------------ */
 export const getMyProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).lean();
+    const user = await User.findById(req.user._id).select("-password").lean();
     if (!user) return res.status(404).json({ message: "User not found ❌" });
 
     const posts = await Post.find({ user: user._id })
@@ -15,26 +14,21 @@ export const getMyProfile = async (req, res) => {
       .populate("user", "username profilePic");
 
     res.json({
-      user: {
-        ...user,
-        posts: posts || [],
-      },
+      success: true,
+      user: { ...user, posts: posts || [] },
     });
   } catch (err) {
-    console.error("Error in getMyProfile:", err);
+    console.error("❌ Error in getMyProfile:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// 🔹 Public profile
+/* ------------------ GET PUBLIC PROFILE ------------------ */
 export const getPublicProfile = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (id === "me")
-      return res.status(400).json({ message: "Use /profile/me for your own profile" });
-
-    const user = await User.findById(id).lean();
+    const user = await User.findById(id).select("-password").lean();
     if (!user) return res.status(404).json({ message: "User not found ❌" });
 
     const posts = await Post.find({ user: user._id })
@@ -42,32 +36,23 @@ export const getPublicProfile = async (req, res) => {
       .populate("user", "username profilePic");
 
     res.json({
-      user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        bio: user.bio || "",
-        profilePic: user.profilePic || "",
-        followers: user.followers || [],
-        following: user.following || [],
-        posts: posts || [],
-      },
+      success: true,
+      user: { ...user, posts: posts || [] },
     });
   } catch (err) {
-    console.error("Error in getPublicProfile:", err);
+    console.error("❌ Error in getPublicProfile:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// 🔹 Follow user
+/* ------------------ FOLLOW USER ------------------ */
 export const followUser = async (req, res) => {
   try {
     const { id } = req.params;
     const currentUser = req.user;
 
-    if (!currentUser) return res.status(401).json({ message: "Unauthorized" });
     if (currentUser._id.toString() === id)
-      return res.status(400).json({ message: "Cannot follow yourself" });
+      return res.status(400).json({ message: "Cannot follow yourself ❌" });
 
     const userToFollow = await User.findById(id);
     if (!userToFollow) return res.status(404).json({ message: "User not found ❌" });
@@ -82,18 +67,16 @@ export const followUser = async (req, res) => {
 
     res.json({ success: true, message: "Followed ✅" });
   } catch (err) {
-    console.error("Error in followUser:", err);
+    console.error("❌ Error in followUser:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-// 🔹 Unfollow user
+/* ------------------ UNFOLLOW USER ------------------ */
 export const unfollowUser = async (req, res) => {
   try {
     const { id } = req.params;
     const currentUser = req.user;
-
-    if (!currentUser) return res.status(401).json({ message: "Unauthorized" });
 
     const userToUnfollow = await User.findById(id);
     if (!userToUnfollow) return res.status(404).json({ message: "User not found ❌" });
@@ -110,25 +93,78 @@ export const unfollowUser = async (req, res) => {
 
     res.json({ success: true, message: "Unfollowed ❌" });
   } catch (err) {
-    console.error("Error in unfollowUser:", err);
+    console.error("❌ Error in unfollowUser:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
-/* ------------------ UPLOAD PROFILE PICTURE ------------------ */
-export const uploadProfilePic = async (req, res) => {
+
+/* ------------------ UPDATE PROFILE (Cloudinary Upload) ------------------ */
+export const updateProfile = async (req, res) => {
   try {
+    if (!req.user?._id)
+      return res.status(401).json({ success: false, message: "Unauthorized ❌" });
+
+    const { username, email, bio } = req.body;
+    const updates = {};
+
+    if (username) updates.username = username.trim();
+    if (email) updates.email = email.trim();
+    if (bio) updates.bio = bio.trim();
+
     const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: "User not found ❌" });
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found ❌" });
 
-    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    // ☁️ Upload new profile image if provided
+    if (req.file) {
+      // 🗑️ Delete old Cloudinary image if it exists
+      if (user.profilePicPublicId) {
+        await cloudinary.uploader.destroy(user.profilePicPublicId);
+        console.log("🗑️ Deleted old Cloudinary image:", user.profilePicPublicId);
+      }
 
-    user.profilePic = req.file.path; // save file path
-    await user.save();
+      // ✅ Upload new image stream to Cloudinary
+      const streamUpload = () =>
+        new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: "profilePics",
+              transformation: [{ width: 500, height: 500, crop: "limit" }],
+            },
+            (error, result) => {
+              if (result) resolve(result);
+              else reject(error);
+            }
+          );
+          streamifier.createReadStream(req.file.buffer).pipe(stream);
+        });
 
-    res.json({ success: true, profilePic: resolveURL(user.profilePic) });
+      const result = await streamUpload();
+
+      updates.profilePic = result.secure_url;
+      updates.profilePicPublicId = result.public_id;
+      console.log("☁️ Uploaded new profile pic:", result.secure_url);
+    }
+
+    // 🧩 Update and return fresh user
+    const updatedUser = await User.findByIdAndUpdate(user._id, updates, {
+      new: true,
+    });
+
+    res.json({
+      success: true,
+      message: "Profile updated ✅",
+      user: {
+        _id: updatedUser._id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        bio: updatedUser.bio || "",
+        profilePic: updatedUser.profilePic || "",
+      },
+    });
   } catch (err) {
-    console.error("Error in uploadProfilePic:", err);
-    res.status(500).json({ message: err.message });
+    console.error("❌ Update profile error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
