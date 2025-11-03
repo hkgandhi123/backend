@@ -21,37 +21,49 @@ export const createPost = async (req, res) => {
 
     const { title, subtitle, content } = req.body;
 
-    // If no user is attached, stop
+    // ✅ Auth check
     if (!req.user) {
       console.error("❌ Missing user in request (check auth middleware)");
       return res.status(401).json({ message: "Unauthorized: No user found" });
     }
 
-    // If no content or title, block empty post
+    // ✅ Prevent empty posts
     if (!content && !title && !req.file) {
       console.error("❌ Empty post content");
       return res.status(400).json({ message: "Post content is empty" });
     }
 
-    // Create the post object
+    // ✅ Upload to Cloudinary (if file is attached)
+    let mediaUrl = "";
+    let mediaType = "";
+
+    if (req.file?.path) {
+      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+        folder: "mern_posts",
+        resource_type: "auto",
+      });
+
+      mediaUrl = uploadResult.secure_url;
+      mediaType = uploadResult.resource_type;
+
+      // ✅ Delete local temp file to save space
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+      console.log("☁️ Uploaded to Cloudinary:", mediaUrl);
+    }
+
+    // ✅ Save post in MongoDB
     const newPost = new Post({
       user: req.user._id,
       title,
       subtitle,
       content,
-      mediaUrl: req.file ? `/uploads/posts/${req.file.filename}` : null,
-      mediaType: req.file
-        ? req.file.mimetype.startsWith("video")
-          ? "video"
-          : "image"
-        : null,
+      mediaUrl,
+      mediaType,
     });
 
-    console.log("🛠 Creating post:", newPost);
-
     await newPost.save();
-
-    console.log("✅ Post saved successfully!");
+    console.log("✅ Post saved successfully:", newPost);
 
     res.status(201).json({ message: "Post created successfully", post: newPost });
   } catch (error) {
@@ -61,13 +73,36 @@ export const createPost = async (req, res) => {
 };
 
 
-/* ------------------ Get All Posts ------------------ */
+
+/* ------------------ Get All Posts (with Follow Status) ------------------ */
 export const getAllPosts = async (req, res) => {
   try {
+    // ✅ Logged-in user ID from protect middleware
+    const currentUserId = req.user?._id?.toString();
+
+    // ✅ Fetch all posts and populate the user info
     const posts = await Post.find()
-      .populate("user", "username profilePic")
+      .populate("user", "username profilePic followers")
       .sort({ createdAt: -1 });
-    res.json({ success: true, posts });
+
+    // ✅ Add `isFollowing` for each post’s user
+    const modifiedPosts = posts.map((post) => {
+      const postObj = post.toObject();
+
+      const isFollowing = post.user?.followers?.some(
+        (followerId) => followerId.toString() === currentUserId
+      );
+
+      return {
+        ...postObj,
+        user: {
+          ...postObj.user,
+          isFollowing: !!isFollowing,
+        },
+      };
+    });
+
+    res.status(200).json({ success: true, posts: modifiedPosts });
   } catch (err) {
     console.error("❌ GetAllPosts error:", err.message);
     res.status(500).json({ message: "Server error ❌" });

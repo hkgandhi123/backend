@@ -117,4 +117,39 @@ router.put("/unfollow/:id", protect, async (req, res) => {
   }
 });
 
+/* ------------------ FOLLOWERS / FOLLOWING LIST ------------------ */
+
+// ✅ Get followers list
+router.get("/:id/followers", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .populate("followers", "username profilePic")
+      .select("followers");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json(user.followers);
+  } catch (err) {
+    console.error("❌ Followers route error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ Get following list
+router.get("/:id/following", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .populate("following", "username profilePic")
+      .select("following");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json(user.following);
+  } catch (err) {
+    console.error("❌ Following route error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
 export default router;
