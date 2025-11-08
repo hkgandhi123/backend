@@ -6,11 +6,11 @@ import {
   getProfile,
   resetPassword,
   updateProfile,
-} from "../controllers/authController.js";
+  googleAuth,
+} from "../controllers/authController.js";   // ✅ googleAuth import added
+
 import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/uploadMiddleware.js";
-
-
 
 const router = express.Router();
 
@@ -18,6 +18,9 @@ const router = express.Router();
 router.post("/signup", signup);
 router.post("/login", login);
 router.post("/logout", logout);
+
+// ✅ Add Google Login route
+router.post("/google", googleAuth);   // ✅ THIS IS NEW
 
 // 🔹 Protected routes (JWT required)
 router.get("/profile", protect, getProfile);

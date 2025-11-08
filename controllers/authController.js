@@ -1,5 +1,8 @@
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /* ------------------ Generate JWT Cookie ------------------ */
 const generateToken = (res, userId) => {
@@ -7,12 +10,11 @@ const generateToken = (res, userId) => {
     expiresIn: "7d",
   });
 
-  // ✅ Always allow secure cross-domain cookies
   res.cookie("token", token, {
     httpOnly: true,
-    secure: true,          // ✅ Always true for Render HTTPS
-    sameSite: "None",      // ✅ Important for Vercel cross-site cookies
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    secure: true,
+    sameSite: "None",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
   return token;
@@ -82,6 +84,53 @@ export const login = async (req, res) => {
   } catch (err) {
     console.error("❌ Login error:", err.message);
     res.status(500).json({ message: "Server error ❌" });
+  }
+};
+
+/* ------------------ ✅ GOOGLE LOGIN ------------------ */
+export const googleAuth = async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    // Verify Google Token
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture } = payload;
+
+    let user = await User.findOne({ email });
+
+    // Create user if not exists
+    if (!user) {
+      user = await User.create({
+        username: name,
+        email,
+        profilePic: picture,
+        password: null, // Google users no password
+      });
+    }
+
+    // Create JWT cookie
+    const jwtToken = generateToken(res, user._id);
+
+    res.json({
+      success: true,
+      message: "Google login successful ✅",
+      token: jwtToken,
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        profilePic: user.profilePic || "",
+        bio: user.bio || "",
+      },
+    });
+  } catch (err) {
+    console.error("❌ Google Auth error:", err.message);
+    res.status(400).json({ message: "Invalid Google token ❌" });
   }
 };
 

@@ -3,6 +3,7 @@ import path from "path";
 import Post from "../models/Post.js";
 import User from "../models/User.js";
 import { v2 as cloudinary } from "cloudinary";
+import OpenAI from "openai";
 
 /* ------------------ Cloudinary Config ------------------ */
 cloudinary.config({
@@ -11,29 +12,138 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-/* ------------------ Create Post ------------------ */
+// 🔹 Debug: check if key is loaded
+console.log("Using OpenAI Key:", process.env.OPENAI_API_KEY ? "YES" : "NO");
+
+/* ------------------ OpenAI Config ------------------ */
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+
+/* ---------------------------------------------------------
+ ✅ AI TEXT MODERATION
+--------------------------------------------------------- */
+async function checkTextSafety(text) {
+  if (!text) return false;
+
+  const response = await openai.moderations.create({
+    model: "omni-moderation-latest",
+    input: text,
+  });
+
+  return response.results[0].flagged;
+}
+
+/* ---------------------------------------------------------
+ ✅ AI IMAGE MODERATION
+--------------------------------------------------------- */
+async function checkImageSafety(filePath) {
+  if (!filePath) return false;
+
+  const imageBuffer = fs.readFileSync(filePath);
+
+  const response = await openai.moderations.create({
+    model: "omni-moderation-latest",
+    input: [{ image: imageBuffer.toString("base64") }],
+  });
+
+  return response.results[0].flagged;
+}
+
+/* ---------------------------------------------------------
+ ✅ EXTRA TEXT SAFETY
+--------------------------------------------------------- */
+
+// bad word cleaner
+function cleanBadWords(text) {
+  if (!text) return text;
+
+  const badWords = [
+    "fuck", "fucking", "shit", "bitch", "asshole",
+    "chutiya", "madarchod", "bhenchod", "harami"
+  ];
+
+  let cleaned = text;
+  badWords.forEach(word => {
+    const regex = new RegExp(word, "gi");
+    cleaned = cleaned.replace(regex, word[0] + "***");
+  });
+
+  return cleaned;
+}
+
+function isSpammy(text) {
+  if (!text) return false;
+  if (/(.)\1{5,}/.test(text)) return true;
+  if (text.toLowerCase().includes("buy now")) return true;
+  if (text.length > 6000) return true;
+  return false;
+}
+
+// AI rewrite
+async function aiSafeRewrite(text) {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "Rewrite text safely without profanity/hate." },
+      { role: "user", content: text }
+    ]
+  });
+
+  return response.choices[0].message.content;
+}
+
+/* ---------------------------------------------------------
+ ✅ CREATE POST
+--------------------------------------------------------- */
 export const createPost = async (req, res) => {
   try {
-    console.log("📥 Incoming POST request...");
-    console.log("User:", req.user?._id);
-    console.log("File:", req.file);
-    console.log("Body:", req.body);
+    console.log("📥 New Post Request From:", req.user?._id);
 
-    const { title, subtitle, content } = req.body;
+    let { title, subtitle, content } = req.body;
 
-    // ✅ Auth check
     if (!req.user) {
-      console.error("❌ Missing user in request (check auth middleware)");
-      return res.status(401).json({ message: "Unauthorized: No user found" });
+      return res.status(401).json({ message: "Unauthorized ❌" });
     }
 
-    // ✅ Prevent empty posts
     if (!content && !title && !req.file) {
-      console.error("❌ Empty post content");
-      return res.status(400).json({ message: "Post content is empty" });
+      return res.status(400).json({ message: "Post cannot be empty ❌" });
     }
 
-    // ✅ Upload to Cloudinary (if file is attached)
+    const fullText = `${title || ""} ${subtitle || ""} ${content || ""}`;
+
+    if (await checkTextSafety(fullText)) {
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+      return res.status(400).json({
+        message: "❌ Post contains disallowed or harmful text.",
+      });
+    }
+
+    if (isSpammy(fullText)) {
+      return res.status(400).json({ message: "❌ Post looks like spam." });
+    }
+
+    // clean abuse
+    title = cleanBadWords(title);
+    subtitle = cleanBadWords(subtitle);
+    content = cleanBadWords(content);
+
+    // rewrite safe
+    content = await aiSafeRewrite(fullText);
+
+    // image moderation
+    if (req.file?.path) {
+      const flagged = await checkImageSafety(req.file.path);
+      if (flagged) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          message: "❌ NSFW / violent image not allowed.",
+        });
+      }
+    }
+
     let mediaUrl = "";
     let mediaType = "";
 
@@ -46,14 +156,10 @@ export const createPost = async (req, res) => {
       mediaUrl = uploadResult.secure_url;
       mediaType = uploadResult.resource_type;
 
-      // ✅ Delete local temp file to save space
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-
-      console.log("☁️ Uploaded to Cloudinary:", mediaUrl);
+      fs.unlinkSync(req.file.path);
     }
 
-    // ✅ Save post in MongoDB
-    const newPost = new Post({
+    const post = await Post.create({
       user: req.user._id,
       title,
       subtitle,
@@ -62,121 +168,80 @@ export const createPost = async (req, res) => {
       mediaType,
     });
 
-    await newPost.save();
-    console.log("✅ Post saved successfully:", newPost);
-
-    res.status(201).json({ message: "Post created successfully", post: newPost });
-  } catch (error) {
-    console.error("❌ Server error in createPost:", error);
-    res.status(500).json({ error: "Internal Server Error", details: error.message });
-  }
-};
-
-
-
-/* ------------------ Get All Posts (with Follow Status) ------------------ */
-export const getAllPosts = async (req, res) => {
-  try {
-    // ✅ Logged-in user ID from protect middleware
-    const currentUserId = req.user?._id?.toString();
-
-    // ✅ Fetch all posts and populate the user info
-    const posts = await Post.find()
-      .populate("user", "username profilePic followers")
-      .sort({ createdAt: -1 });
-
-    // ✅ Add `isFollowing` for each post’s user
-    const modifiedPosts = posts.map((post) => {
-      const postObj = post.toObject();
-
-      const isFollowing = post.user?.followers?.some(
-        (followerId) => followerId.toString() === currentUserId
-      );
-
-      return {
-        ...postObj,
-        user: {
-          ...postObj.user,
-          isFollowing: !!isFollowing,
-        },
-      };
-    });
-
-    res.status(200).json({ success: true, posts: modifiedPosts });
-  } catch (err) {
-    console.error("❌ GetAllPosts error:", err.message);
-    res.status(500).json({ message: "Server error ❌" });
-  }
-};
-
-/* ------------------ Update Post ------------------ */
-export const updatePost = async (req, res) => {
-  try {
-    if (!req.user?._id) {
-      return res
-        .status(401)
-        .json({ message: "Please login before updating a post ❌" });
-    }
-
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found ❌" });
-    if (post.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized ❌" });
-    }
-
-    const { title, subtitle, content } = req.body;
-    if (title) post.title = title;
-    if (subtitle) post.subtitle = subtitle;
-    if (content) post.content = content;
-
-    if (req.file?.path) {
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-        folder: "mern_posts",
-        resource_type: "auto",
-      });
-      post.media = uploadResult.secure_url;
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    }
-
-    await post.save();
-    await post.populate("user", "username profilePic");
-
-    res.json({
+    res.status(201).json({
       success: true,
-      message: "Post updated successfully ✅",
+      message: "✅ Post created successfully!",
       post,
     });
+
   } catch (err) {
-    console.error("❌ UpdatePost error:", err.message);
-    res.status(500).json({ message: "Server error ❌" });
+    console.error("❌ Error creating post:", err);
+    res.status(500).json({ message: "Server Error", error: err.message });
   }
 };
 
-/* ------------------ Delete Post ------------------ */
-export const deletePost = async (req, res) => {
+/* ---------------------------------------------------------
+ ✅ GET ALL POSTS
+--------------------------------------------------------- */
+export const getAllPosts = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
+    const posts = await Post.find()
+      .populate("user", "username profilePic")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, posts });
+  } catch (err) {
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+};
+
+/* ---------------------------------------------------------
+ ✅ UPDATE POST
+--------------------------------------------------------- */
+export const updatePost = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const post = await Post.findById(postId);
     if (!post) return res.status(404).json({ message: "Post not found ❌" });
 
     if (post.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized to delete ❌" });
+      return res.status(403).json({ message: "Not allowed ❌" });
     }
 
-    // ✅ Delete from Cloudinary if exists
-    if (post.media?.includes("cloudinary")) {
-      try {
-        const publicId = post.media.split("/").slice(-1)[0].split(".")[0];
-        await cloudinary.uploader.destroy(`mern_posts/${publicId}`);
-        console.log("🗑️ Cloudinary asset deleted:", publicId);
-      } catch (err) {
-        console.warn("⚠️ Cloudinary delete skipped:", err.message);
-      }
+    post.title = req.body.title || post.title;
+    post.subtitle = req.body.subtitle || post.subtitle;
+    post.content = req.body.content || post.content;
+
+    await post.save();
+
+    res.json({ success: true, message: "✅ Post updated!", post });
+
+  } catch (err) {
+    res.status(500).json({ message: "Server Error", error: err.message });
+  }
+};
+
+/* ---------------------------------------------------------
+ ✅ DELETE POST
+--------------------------------------------------------- */
+export const deletePost = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ message: "Post not found ❌" });
+
+    if (post.mediaUrl) {
+      const publicId = post.mediaUrl.split("/").pop().split(".")[0];
+      await cloudinary.uploader.destroy(publicId, { resource_type: post.mediaType });
     }
 
     await post.deleteOne();
-    res.json({ success: true, message: "Post deleted successfully ✅" });
+
+    res.json({ success: true, message: "✅ Post deleted!" });
+
   } catch (err) {
-    console.error("❌ DeletePost error:", err.message);
-    res.status(500).json({ message: "Server error ❌" });
+    res.status(500).json({ message: "Server Error", error: err.message });
   }
 };

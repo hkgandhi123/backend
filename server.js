@@ -19,10 +19,17 @@ import profileRoutes from "./routes/profileRoutes.js";
 
 // Models
 import Message from "./models/Message.js";
+import 'dotenv/config';
+console.log("ENV loaded:", process.env.OPENAI_API_KEY ? "YES" : "NO");
 
+// Load env variables
 dotenv.config();
+console.log("ENV loaded:", !!process.env.MONGO_URI, !!process.env.OPENAI_API_KEY);
+dotenv.config();
+
 const app = express();
 const httpServer = createServer(app);
+console.log("OPENAI_KEY LOADED?", !!process.env.OPENAI_API_KEY);
 
 // ES Modules __dirname fix
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +38,7 @@ const __dirname = path.dirname(__filename);
 // ✅ Allowed Origins (regex for any Vercel frontend)
 const allowedOrigins = [
   "http://localhost:3000", 
-  "https://bkc-frontend.vercel.app" ,
+  "https://bkc-frontend.vercel.app" , "https://hitbit.vercel.app" ,
   /\.vercel\.app$/,  // allow any Vercel subdomain
 ];
 

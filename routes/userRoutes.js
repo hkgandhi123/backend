@@ -4,6 +4,45 @@ import User from "../models/User.js";
 
 const router = express.Router();
 
+/* ------------------ USERNAME CHECK ROUTE ------------------ */
+
+// ✅ Check if username already exists (case-insensitive) + suggest alternatives
+router.get("/check-username", async (req, res) => {
+  try {
+    const { username } = req.query;
+    if (!username)
+      return res.status(400).json({ message: "Username is required" });
+
+    // 🔹 Find user (case-insensitive)
+    const existingUser = await User.findOne({
+      username: { $regex: `^${username}$`, $options: "i" },
+    });
+
+    if (!existingUser) {
+      // ✅ Username is available
+      return res.json({ exists: false });
+    }
+
+    // 🔹 Username exists → generate suggestions
+    const suggestions = [];
+    const randomNum = Math.floor(Math.random() * 900) + 100; // random 3 digits
+
+    // Create 3 simple, human-friendly variants
+    suggestions.push(`${username}_${randomNum}`);
+    suggestions.push(`${username}${randomNum + 1}`);
+    suggestions.push(`its_${username.toLowerCase()}`);
+
+    res.json({
+      exists: true,
+      message: "Username already taken",
+      suggestions,
+    });
+  } catch (err) {
+    console.error("❌ Username check error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 /* ------------------ PROFILE ROUTES ------------------ */
 
 // ✅ Get own profile
@@ -150,6 +189,5 @@ router.get("/:id/following", protect, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 export default router;
