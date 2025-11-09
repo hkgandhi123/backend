@@ -23,15 +23,18 @@ const generateToken = (res, userId) => {
 /* ------------------ Signup ------------------ */
 export const signup = async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password)
+    const { username, email, password, phone } = req.body;
+
+    if (!username || !email || !password) {
       return res.status(400).json({ message: "All fields required ❌" });
+    }
 
     const userExists = await User.findOne({ email });
-    if (userExists)
+    if (userExists) {
       return res.status(400).json({ message: "User already exists ❌" });
+    }
 
-    const user = await User.create({ username, email, password });
+    const user = await User.create({ username, email, password, phone });
     const token = generateToken(res, user._id);
 
     res.status(201).json({
@@ -42,6 +45,7 @@ export const signup = async (req, res) => {
         _id: user._id,
         username: user.username,
         email: user.email,
+        phone: user.phone || "",
         bio: user.bio || "",
         profilePic: user.profilePic || "",
       },
@@ -52,20 +56,36 @@ export const signup = async (req, res) => {
   }
 };
 
-/* ------------------ Login ------------------ */
+/* ------------------ Login (Email or Phone) ------------------ */
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ message: "Email and password required ❌" });
+    const { emailOrPhone, password } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user)
+    if (!emailOrPhone || !password) {
+      return res
+        .status(400)
+        .json({ message: "Email/Phone and password required ❌" });
+    }
+
+    const user = await User.findOne({
+      $or: [{ email: emailOrPhone }, { phone: emailOrPhone }],
+    });
+
+    if (!user) {
       return res.status(401).json({ message: "Invalid credentials ❌" });
+    }
+
+    // ✅ Block Google-only users from normal login
+    if (!user.password) {
+      return res.status(400).json({
+        message: "This account uses Google login. Use Google Sign-in ✅",
+      });
+    }
 
     const isMatch = await user.matchPassword(password);
-    if (!isMatch)
+    if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials ❌" });
+    }
 
     const token = generateToken(res, user._id);
 
@@ -77,6 +97,7 @@ export const login = async (req, res) => {
         _id: user._id,
         username: user.username,
         email: user.email,
+        phone: user.phone || "",
         bio: user.bio || "",
         profilePic: user.profilePic || "",
       },
@@ -92,28 +113,31 @@ export const googleAuth = async (req, res) => {
   try {
     const { token } = req.body;
 
-    // Verify Google Token
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { email, name, picture } = payload;
+    const { email, name, picture, sub: googleId } = payload;
 
     let user = await User.findOne({ email });
 
-    // Create user if not exists
     if (!user) {
+      // ✅ New Google User
       user = await User.create({
         username: name,
         email,
+        googleId,
         profilePic: picture,
-        password: null, // Google users no password
       });
+    } else {
+      // ✅ Existing user update googleId if not saved
+      if (!user.googleId) user.googleId = googleId;
+      if (!user.profilePic) user.profilePic = picture;
+      await user.save();
     }
 
-    // Create JWT cookie
     const jwtToken = generateToken(res, user._id);
 
     res.json({
@@ -147,8 +171,9 @@ export const logout = (req, res) => {
 /* ------------------ Get Profile ------------------ */
 export const getProfile = async (req, res) => {
   try {
-    if (!req.user)
+    if (!req.user) {
       return res.status(401).json({ message: "Unauthorized ❌" });
+    }
 
     res.json({
       success: true,
@@ -156,6 +181,7 @@ export const getProfile = async (req, res) => {
         _id: req.user._id,
         username: req.user.username,
         email: req.user.email,
+        phone: req.user.phone || "",
         bio: req.user.bio || "",
         profilePic: req.user.profilePic || "",
       },
@@ -170,14 +196,17 @@ export const getProfile = async (req, res) => {
 export const resetPassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6)
+
+    if (!newPassword || newPassword.length < 6) {
       return res
         .status(400)
         .json({ message: "Password must be at least 6 characters ❌" });
+    }
 
     const user = await User.findById(req.user._id);
-    if (!user)
+    if (!user) {
       return res.status(404).json({ message: "User not found ❌" });
+    }
 
     user.password = newPassword;
     await user.save();
@@ -192,15 +221,21 @@ export const resetPassword = async (req, res) => {
 /* ------------------ Update Profile ------------------ */
 export const updateProfile = async (req, res) => {
   try {
-    const { username, bio } = req.body;
+    const { username, bio, phone } = req.body;
+
     const user = await User.findById(req.user._id);
-    if (!user)
+    if (!user) {
       return res.status(404).json({ message: "User not found ❌" });
+    }
 
     if (username) user.username = username;
     if (bio) user.bio = bio;
+    if (phone) user.phone = phone;
 
-    if (req.file) user.profilePic = `/uploads/${req.file.filename}`;
+    if (req.file) {
+      user.profilePic = `/uploads/${req.file.filename}`;
+    }
+
     await user.save();
 
     res.json({
@@ -210,6 +245,7 @@ export const updateProfile = async (req, res) => {
         _id: user._id,
         username: user.username,
         email: user.email,
+        phone: user.phone || "",
         bio: user.bio || "",
         profilePic: user.profilePic || "",
       },

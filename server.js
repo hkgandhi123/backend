@@ -16,7 +16,8 @@ import storyRoutes from "./routes/storyRoutes.js";
 import messagesRoutes from "./routes/messagesRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import profileRoutes from "./routes/profileRoutes.js";
-
+import trendingRouter from "./routes/trendingRoutes.js";
+import uploadRoute from "./routes/upload.js";
 // Models
 import Message from "./models/Message.js";
 import 'dotenv/config';
@@ -87,6 +88,9 @@ app.use("/stories", storyRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/users", userRoutes);
 app.use("/profile", profileRoutes);
+app.use("/trending", trendingRouter);
+app.use("/upload", uploadRoute);
+
 
 // 🔹 Health check route
 app.get("/", (req, res) => res.send("✅ Backend is running"));
